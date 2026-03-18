@@ -1,63 +1,209 @@
-import Image from "next/image";
+"use client";
+
+import { useState } from "react";
+import { PromptInput } from "@/components/prompt-input";
+import { BlueprintEditor } from "@/components/blueprint-editor";
+import { LandingBlueprintEditor } from "@/components/landing-blueprint-editor";
+import { GenerationProgress } from "@/components/generation-progress";
+import { DownloadReady } from "@/components/download-ready";
+import type { SiteBlueprint, LandingPageBlueprint, GenerationMode } from "@/lib/types";
+
+type Phase = "prompt" | "blueprint" | "generating" | "done";
 
 export default function Home() {
+  const [phase, setPhase] = useState<Phase>("prompt");
+  const [prompt, setPrompt] = useState("");
+  const [mode, setMode] = useState<GenerationMode>("website");
+  const [modelId, setModelId] = useState("claude-opus-4-6");
+  const [blueprint, setBlueprint] = useState<SiteBlueprint | null>(null);
+  const [landingBlueprint, setLandingBlueprint] = useState<LandingPageBlueprint | null>(null);
+  const [jobId, setJobId] = useState<string | null>(null);
+  const [isLoading, setIsLoading] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+
+  const handlePromptSubmit = async (userPrompt: string, selectedModelId: string, selectedMode: GenerationMode) => {
+    setPrompt(userPrompt);
+    setModelId(selectedModelId);
+    setMode(selectedMode);
+    setIsLoading(true);
+    setError(null);
+    try {
+      const res = await fetch("/api/plan", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ prompt: userPrompt, modelId: selectedModelId, mode: selectedMode }),
+      });
+      if (!res.ok) {
+        const data = await res.json().catch(() => ({}));
+        throw new Error(data.error || "Failed to generate blueprint");
+      }
+      const data = await res.json();
+
+      if (selectedMode === "landing-page") {
+        setLandingBlueprint(data.blueprint);
+        setBlueprint(null);
+      } else {
+        setBlueprint(data.blueprint);
+        setLandingBlueprint(null);
+      }
+      setPhase("blueprint");
+    } catch (err) {
+      console.error(err);
+      setError(err instanceof Error ? err.message : "Failed to generate blueprint. Please try again.");
+    } finally {
+      setIsLoading(false);
+    }
+  };
+
+  const handleBlueprintApprove = async (approvedBlueprint: SiteBlueprint) => {
+    setBlueprint(approvedBlueprint);
+    setPhase("generating");
+    setError(null);
+    try {
+      const res = await fetch("/api/generate", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ blueprint: approvedBlueprint, modelId, mode: "website" }),
+      });
+      if (!res.ok) throw new Error("Failed to start generation");
+      const data = await res.json();
+      setJobId(data.jobId);
+    } catch (err) {
+      console.error(err);
+      setError("Failed to start generation. Please try again.");
+      setPhase("blueprint");
+    }
+  };
+
+  const handleLandingApprove = async (approvedBlueprint: LandingPageBlueprint) => {
+    setLandingBlueprint(approvedBlueprint);
+    setPhase("generating");
+    setError(null);
+    try {
+      const res = await fetch("/api/generate", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ blueprint: approvedBlueprint, modelId, mode: "landing-page" }),
+      });
+      if (!res.ok) throw new Error("Failed to start generation");
+      const data = await res.json();
+      setJobId(data.jobId);
+    } catch (err) {
+      console.error(err);
+      setError("Failed to start generation. Please try again.");
+      setPhase("blueprint");
+    }
+  };
+
+  const handleGenerationComplete = () => {
+    setPhase("done");
+  };
+
+  const handleStartOver = () => {
+    setPhase("prompt");
+    setPrompt("");
+    setMode("website");
+    setBlueprint(null);
+    setLandingBlueprint(null);
+    setJobId(null);
+    setError(null);
+  };
+
+  const siteName = mode === "landing-page"
+    ? landingBlueprint?.name || "Landing Page"
+    : blueprint?.name || "Generated Site";
+
   return (
-    <div className="flex min-h-screen items-center justify-center bg-zinc-50 font-sans dark:bg-black">
-      <main className="flex min-h-screen w-full max-w-3xl flex-col items-center justify-between py-32 px-16 bg-white dark:bg-black sm:items-start">
-        <Image
-          className="dark:invert"
-          src="/next.svg"
-          alt="Next.js logo"
-          width={100}
-          height={20}
-          priority
-        />
-        <div className="flex flex-col items-center gap-6 text-center sm:items-start sm:text-left">
-          <h1 className="max-w-xs text-3xl font-semibold leading-10 tracking-tight text-black dark:text-zinc-50">
-            To get started, edit the page.tsx file.
-          </h1>
-          <p className="max-w-md text-lg leading-8 text-zinc-600 dark:text-zinc-400">
-            Looking for a starting point or more instructions? Head over to{" "}
-            <a
-              href="https://vercel.com/templates?framework=next.js&utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-              className="font-medium text-zinc-950 dark:text-zinc-50"
-            >
-              Templates
-            </a>{" "}
-            or the{" "}
-            <a
-              href="https://nextjs.org/learn?utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-              className="font-medium text-zinc-950 dark:text-zinc-50"
-            >
-              Learning
-            </a>{" "}
-            center.
-          </p>
+    <div className="min-h-screen flex flex-col">
+      {/* Header */}
+      <header className="border-b border-brand-border px-6 py-4 flex items-center justify-between">
+        <div className="flex items-center gap-3">
+          <div className="w-8 h-8 rounded-lg bg-brand-accent flex items-center justify-center">
+            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="white" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+              <path d="M12 2L2 7l10 5 10-5-10-5z"/>
+              <path d="M2 17l10 5 10-5"/>
+              <path d="M2 12l10 5 10-5"/>
+            </svg>
+          </div>
+          <h1 className="text-lg font-semibold tracking-tight">Elementor AI Site Generator</h1>
         </div>
-        <div className="flex flex-col gap-4 text-base font-medium sm:flex-row">
-          <a
-            className="flex h-12 w-full items-center justify-center gap-2 rounded-full bg-foreground px-5 text-background transition-colors hover:bg-[#383838] dark:hover:bg-[#ccc] md:w-[158px]"
-            href="https://vercel.com/new?utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-            target="_blank"
-            rel="noopener noreferrer"
+
+        {/* Phase indicator */}
+        <div className="flex items-center gap-2 text-sm">
+          {(["prompt", "blueprint", "generating", "done"] as Phase[]).map((p, i) => (
+            <div key={p} className="flex items-center gap-2">
+              <div
+                className={`w-2 h-2 rounded-full transition-colors ${
+                  phase === p
+                    ? "bg-brand-accent"
+                    : (["prompt", "blueprint", "generating", "done"].indexOf(phase) > i)
+                    ? "bg-brand-accent/50"
+                    : "bg-brand-border"
+                }`}
+              />
+              <span className={`hidden sm:inline capitalize ${phase === p ? "text-brand-text" : "text-brand-muted"}`}>
+                {p === "done" ? "Download" : p}
+              </span>
+              {i < 3 && <span className="text-brand-border hidden sm:inline">—</span>}
+            </div>
+          ))}
+        </div>
+      </header>
+
+      {/* Error banner */}
+      {error && (
+        <div className="mx-6 mt-4 px-4 py-3 bg-red-50 border border-red-200 rounded-lg flex items-start gap-3">
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#DC2626" strokeWidth="2" className="mt-0.5 flex-shrink-0">
+            <circle cx="12" cy="12" r="10" />
+            <path d="M12 8v4M12 16h.01" />
+          </svg>
+          <p className="text-sm text-red-700 flex-1">{error}</p>
+          <button
+            onClick={() => setError(null)}
+            className="text-red-400 hover:text-red-600 transition-colors flex-shrink-0"
           >
-            <Image
-              className="dark:invert"
-              src="/vercel.svg"
-              alt="Vercel logomark"
-              width={16}
-              height={16}
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+              <path d="M18 6L6 18M6 6l12 12" />
+            </svg>
+          </button>
+        </div>
+      )}
+
+      {/* Main content */}
+      <main className="flex-1 flex items-center justify-center p-6">
+        <div className="w-full max-w-3xl phase-enter" key={phase}>
+          {phase === "prompt" && (
+            <PromptInput onSubmit={handlePromptSubmit} isLoading={isLoading} />
+          )}
+          {phase === "blueprint" && mode === "website" && blueprint && (
+            <BlueprintEditor
+              blueprint={blueprint}
+              onApprove={handleBlueprintApprove}
+              onBack={() => setPhase("prompt")}
             />
-            Deploy Now
-          </a>
-          <a
-            className="flex h-12 w-full items-center justify-center rounded-full border border-solid border-black/[.08] px-5 transition-colors hover:border-transparent hover:bg-black/[.04] dark:border-white/[.145] dark:hover:bg-[#1a1a1a] md:w-[158px]"
-            href="https://nextjs.org/docs?utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-            target="_blank"
-            rel="noopener noreferrer"
-          >
-            Documentation
-          </a>
+          )}
+          {phase === "blueprint" && mode === "landing-page" && landingBlueprint && (
+            <LandingBlueprintEditor
+              blueprint={landingBlueprint}
+              onApprove={handleLandingApprove}
+              onBack={() => setPhase("prompt")}
+            />
+          )}
+          {phase === "generating" && jobId && (
+            <GenerationProgress
+              jobId={jobId}
+              mode={mode}
+              onComplete={handleGenerationComplete}
+            />
+          )}
+          {phase === "done" && jobId && (
+            <DownloadReady
+              jobId={jobId}
+              siteName={siteName}
+              mode={mode}
+              onStartOver={handleStartOver}
+            />
+          )}
         </div>
       </main>
     </div>
