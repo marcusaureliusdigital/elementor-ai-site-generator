@@ -4,6 +4,8 @@ An AI-powered tool that generates complete, importable Elementor Pro site kits a
 
 Describe what you want — the app creates a blueprint, lets you review it, then generates production-ready Elementor JSON you can import directly into WordPress.
 
+Important note: This project was built for fun and is still under active development. It is not intended for production use and should not be deployed on live or client websites. You are solely responsible for reviewing, testing, and validating any output before use. Always use a staging environment and maintain full backups.
+
 ---
 
 ## Features
