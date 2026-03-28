@@ -12,7 +12,6 @@ type Phase = "prompt" | "blueprint" | "generating" | "done";
 
 export default function Home() {
   const [phase, setPhase] = useState<Phase>("prompt");
-  const [prompt, setPrompt] = useState("");
   const [mode, setMode] = useState<GenerationMode>("website");
   const [modelId, setModelId] = useState("claude-opus-4-6");
   const [blueprint, setBlueprint] = useState<SiteBlueprint | null>(null);
@@ -21,17 +20,22 @@ export default function Home() {
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
-  const handlePromptSubmit = async (userPrompt: string, selectedModelId: string, selectedMode: GenerationMode) => {
-    setPrompt(userPrompt);
+  const handlePromptSubmit = async (userPrompt: string, selectedModelId: string, selectedMode: GenerationMode, files: File[]) => {
     setModelId(selectedModelId);
     setMode(selectedMode);
     setIsLoading(true);
     setError(null);
     try {
+      const formData = new FormData();
+      formData.append("prompt", userPrompt);
+      formData.append("modelId", selectedModelId);
+      formData.append("mode", selectedMode);
+      for (const file of files) {
+        formData.append("files", file);
+      }
       const res = await fetch("/api/plan", {
         method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ prompt: userPrompt, modelId: selectedModelId, mode: selectedMode }),
+        body: formData,
       });
       if (!res.ok) {
         const data = await res.json().catch(() => ({}));
@@ -101,7 +105,6 @@ export default function Home() {
 
   const handleStartOver = () => {
     setPhase("prompt");
-    setPrompt("");
     setMode("website");
     setBlueprint(null);
     setLandingBlueprint(null);

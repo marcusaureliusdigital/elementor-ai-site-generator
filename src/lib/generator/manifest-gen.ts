@@ -30,9 +30,8 @@ export function generateManifest(
     templates,
     pages,
     customPostTypes,
-    plugins,
     categories,
-    hasBlog,
+    plugins,
   } = blueprint;
 
   // ── Templates map ─────────────────────────────────────────────

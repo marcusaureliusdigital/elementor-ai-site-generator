@@ -35,7 +35,7 @@ export async function generateSiteKit(
   blueprint: SiteBlueprint,
   modelId: ModelId = "claude-opus-4-6"
 ): Promise<void> {
-  const job = createJob(jobId, blueprint);
+  createJob(jobId, blueprint);
   const idMgr = new IdManager(500); // start post IDs at 500 to avoid conflicts
 
   // ── Register all files ─────────────────────────────────────────

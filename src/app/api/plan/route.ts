@@ -6,6 +6,11 @@ import { PLAN_SYSTEM_PROMPT } from "@/lib/prompts/plan-system";
 import { LANDING_PLAN_SYSTEM_PROMPT } from "@/lib/prompts/landing-plan-system";
 import { MARCUS_AURELIUS_BRAND, BRAND_VOICE } from "@/lib/brand";
 import { IdManager } from "@/lib/id-manager";
+import {
+  processUploadedFile,
+  buildUploadContext,
+  validateUploadLimits,
+} from "@/lib/upload-processor";
 import type {
   SiteBlueprint,
   LandingPageBlueprint,
@@ -16,7 +21,7 @@ import type {
   CategoryDef,
   TemplateDef,
   PluginDef,
-  TemplateCondition,
+  UploadContext,
 } from "@/lib/types";
 
 // ── Zod Schemas (for LLM structured output) ──────────────────────
@@ -205,7 +210,7 @@ function buildTemplates(
   return templates;
 }
 
-function buildPlugins(cpts: CptDef[], hasForm: boolean): PluginDef[] {
+function buildPlugins(cpts: CptDef[]): PluginDef[] {
   const plugins: PluginDef[] = [
     {
       name: "Elementor",
@@ -253,14 +258,72 @@ const LandingBlueprintResponseSchema = z.object({
   }),
 });
 
+// ── Upload-aware prompt addendums ──────────────────────────────────
+
+const IMAGE_ADDENDUM = `
+
+## Reference Images
+
+The user has uploaded reference images. Analyze these images carefully to inform your design decisions: color palette extraction, layout patterns, typography style, spacing conventions, and overall aesthetic direction. Use them as directional inspiration — match the feel and quality, not pixel-for-pixel reproduction. If colors or fonts are clearly visible in the images, prefer those over generic defaults.`;
+
+const DOCUMENT_ADDENDUM = `
+
+## Existing Website Files
+
+The user has uploaded existing website files. Analyze the current site's structure, content, design patterns, and copy. Your blueprint should be an OPTIMIZED version that improves: visual hierarchy, color harmony, typography pairing, section flow, CTA placement, content quality, mobile responsiveness, and conversion best practices. Preserve the core brand identity and content intent while elevating the overall quality. Extract real copy, headings, and section structure from the uploaded files rather than inventing new content.`;
+
+// ── Build multimodal user message parts ────────────────────────────
+
+type TextPart = { type: "text"; text: string };
+type ImagePart = { type: "image"; image: string; mediaType?: string };
+type UserPart = TextPart | ImagePart;
+
+function buildUserMessageParts(
+  prompt: string,
+  modeLabel: string,
+  uploadCtx: UploadContext
+): UserPart[] {
+  const parts: UserPart[] = [];
+
+  // Text prompt
+  parts.push({
+    type: "text",
+    text: `Create a detailed ${modeLabel} blueprint for the following request:\n\n${prompt}`,
+  });
+
+  // Document context
+  if (uploadCtx.documents.length > 0) {
+    const docText = uploadCtx.documents
+      .map((d) => `--- File: ${d.name} ---\n${d.textContent}`)
+      .join("\n\n");
+    parts.push({
+      type: "text",
+      text: `\n\n# Existing Website Files for Analysis & Optimization\n\n${docText}`,
+    });
+  }
+
+  // Images for vision
+  for (const img of uploadCtx.images) {
+    parts.push({
+      type: "image",
+      image: img.base64!,
+      mediaType: img.mimeType,
+    });
+  }
+
+  return parts;
+}
+
 // ── API Route ──────────────────────────────────────────────────────
 
 export async function POST(req: NextRequest) {
   try {
-    const body = await req.json();
-    const { prompt, modelId: rawModelId, mode: rawMode } = body;
-    const modelId: ModelId = rawModelId || "claude-opus-4-6";
-    const mode: GenerationMode = rawMode || "website";
+    // ── Parse FormData ─────────────────────────────────────────────
+    const formData = await req.formData();
+    const prompt = formData.get("prompt") as string;
+    const modelId: ModelId = (formData.get("modelId") as ModelId) || "claude-opus-4-6";
+    const mode: GenerationMode = (formData.get("mode") as GenerationMode) || "website";
+    const rawFiles = formData.getAll("files") as File[];
 
     if (!prompt || typeof prompt !== "string") {
       return NextResponse.json(
@@ -269,16 +332,35 @@ export async function POST(req: NextRequest) {
       );
     }
 
+    // ── Validate & process uploads ─────────────────────────────────
+    const uploadError = validateUploadLimits(rawFiles);
+    if (uploadError) {
+      return NextResponse.json({ error: uploadError }, { status: 400 });
+    }
+
+    const uploadedFiles = await Promise.all(rawFiles.map(processUploadedFile));
+    const uploadCtx = buildUploadContext(uploadedFiles);
+
     // ── Brand context for planning ────────────────────────────────
     const brandContext = `# Brand Identity Reference\n${MARCUS_AURELIUS_BRAND}\n\n# Brand Voice Reference\n${BRAND_VOICE}\n\n---\n\n`;
 
+    // ── Build system prompt with conditional addendums ─────────────
+    const hasImages = uploadCtx.images.length > 0;
+    const hasDocs = uploadCtx.documents.length > 0;
+
     // ── Landing Page Mode ──────────────────────────────────────────
     if (mode === "landing-page") {
+      let systemPrompt = brandContext + LANDING_PLAN_SYSTEM_PROMPT;
+      if (hasImages) systemPrompt += IMAGE_ADDENDUM;
+      if (hasDocs) systemPrompt += DOCUMENT_ADDENDUM;
+
+      const userContent = buildUserMessageParts(prompt, "landing page", uploadCtx);
+
       const { object: rawLandingBlueprint } = await generateObject({
         model: getModel(modelId),
         schema: LandingBlueprintResponseSchema,
-        system: brandContext + LANDING_PLAN_SYSTEM_PROMPT,
-        prompt: `Create a detailed landing page blueprint for the following request:\n\n${prompt}`,
+        system: systemPrompt,
+        messages: [{ role: "user" as const, content: userContent }],
       });
 
       const landingBlueprint: LandingPageBlueprint = {
@@ -289,11 +371,17 @@ export async function POST(req: NextRequest) {
     }
 
     // ── Full Website Mode ──────────────────────────────────────────
+    let systemPrompt = brandContext + PLAN_SYSTEM_PROMPT;
+    if (hasImages) systemPrompt += IMAGE_ADDENDUM;
+    if (hasDocs) systemPrompt += DOCUMENT_ADDENDUM;
+
+    const userContent = buildUserMessageParts(prompt, "website", uploadCtx);
+
     const { object: rawBlueprint } = await generateObject({
       model: getModel(modelId),
       schema: BlueprintResponseSchema,
-      system: brandContext + PLAN_SYSTEM_PROMPT,
-      prompt: `Create a detailed website blueprint for the following request:\n\n${prompt}`,
+      system: systemPrompt,
+      messages: [{ role: "user" as const, content: userContent }],
     });
 
     // Now allocate all IDs server-side
@@ -343,7 +431,7 @@ export async function POST(req: NextRequest) {
     const templates = buildTemplates(pages, customPostTypes, rawBlueprint.hasBlog, idMgr);
 
     // Build plugin list
-    const plugins = buildPlugins(customPostTypes, rawBlueprint.hasContactForm);
+    const plugins = buildPlugins(customPostTypes);
 
     // Assemble full blueprint
     const blueprint: SiteBlueprint = {

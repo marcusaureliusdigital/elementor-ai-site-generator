@@ -10,11 +10,16 @@ import type { JobState, FileState, JobStatus, SiteBlueprint, GenerationMode, Lan
 
 const globalKey = "__elementor_job_store__" as const;
 
+interface GlobalWithElementorStore {
+  __elementor_job_store__?: Map<string, JobState>;
+}
+
 function getJobsMap(): Map<string, JobState> {
-  if (!(globalThis as any)[globalKey]) {
-    (globalThis as any)[globalKey] = new Map<string, JobState>();
+  const g = globalThis as GlobalWithElementorStore;
+  if (!g[globalKey]) {
+    g[globalKey] = new Map<string, JobState>();
   }
-  return (globalThis as any)[globalKey];
+  return g[globalKey]!;
 }
 
 const jobs = getJobsMap();

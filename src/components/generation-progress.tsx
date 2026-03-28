@@ -39,7 +39,7 @@ export function GenerationProgress({ jobId, mode = "website", onComplete }: Gene
 
         // Build log entries from file states
         const entries: string[] = [];
-        for (const [name, file] of Object.entries(data.files)) {
+        for (const file of Object.values(data.files)) {
           if (file.status === "generating") {
             entries.push(`▸ Generating ${file.label}...`);
           } else if (file.status === "done") {

@@ -1,4 +1,4 @@
-import { getModel, type ModelId } from "../ai-provider";
+import type { ModelId } from "../ai-provider";
 import { TEMPLATE_SYSTEM_PROMPT } from "../prompts/template-system";
 import { IdManager } from "../id-manager";
 import { validateTemplateJson } from "../post-processor";
@@ -92,10 +92,13 @@ The output JSON must have this wrapper:
 }`;
       } else {
         typeSpecificPrompt = `Generate a SINGLE POST (blog) template with:
-- Featured image at top using __dynamic__ post-featured-image tag
-- Post title using __dynamic__ post-title tag
-- Post date using __dynamic__ post-date tag
-- Post content area (text-editor with __dynamic__ post-content tag)
+- Featured image at top (theme-post-featured-image widget with __dynamic__ post-featured-image tag)
+- Post title (theme-post-title widget with __dynamic__ post-title tag)
+- Author info (author-box widget with layout: "left", alignment: "left")
+- Post content (theme-post-content widget — renders the full post body, NO settings needed)
+- Share buttons (share-buttons widget with facebook, twitter, linkedin)
+- Related posts section using the "posts" widget with posts_post_type: "related"
+  CRITICAL: There is NO "related-posts" widget. Use the standard "posts" widget with posts_post_type: "related", posts_exclude: ["current_post"], posts_related_fallback: "fallback_recent"
 - Clean, readable blog layout
 
 The output JSON must have this wrapper:
@@ -110,10 +113,11 @@ The output JSON must have this wrapper:
 
     case "archive":
       typeSpecificPrompt = `Generate an ARCHIVE template with:
-- Page title heading
-- Grid layout of posts using the "posts" widget or a loop-carousel
-- Pagination or "load more" option
-- Clean grid layout
+- Archive title heading using __dynamic__ archive-title tag on a heading widget
+- Posts grid using the "posts" widget (skin: "classic" or "cards") with pagination_type: "numbers" or "load_more_on_click"
+- Alternatively, use "loop-grid" widget with a template_id reference for custom card layouts
+- Optional newsletter/subscribe form section
+- Clean grid layout with responsive columns
 
 The output JSON must have this wrapper:
 {
@@ -193,7 +197,7 @@ function estimateElementCount(docType: string): number {
     case "footer":
       return 10;
     case "single-post":
-      return 12;
+      return 20;
     case "archive":
       return 8;
     case "loop-item":

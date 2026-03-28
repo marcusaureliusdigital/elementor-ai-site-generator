@@ -1,3 +1,4 @@
+/* eslint-disable @typescript-eslint/no-explicit-any */
 import { generateText } from "ai";
 import { getModel, type ModelId } from "../ai-provider";
 import { LANDING_CONTENT_SYSTEM_PROMPT } from "../prompts/landing-content-system";
@@ -185,7 +186,7 @@ function postProcessElements(
   usedIds: Set<string>
 ): void {
   const idPattern = /^[0-9a-f]{7,8}$/;
-  const NESTED_WIDGETS = new Set(["nested-accordion", "nested-tabs", "nested-carousel"]);
+
 
   for (const el of elements) {
     // Fix missing or invalid IDs
@@ -240,7 +241,7 @@ function postProcessElements(
     }
 
     // Normalize size objects: add sizes: [] where missing
-    for (const [key, val] of Object.entries(settings)) {
+    for (const val of Object.values(settings)) {
       if (val && typeof val === "object" && !Array.isArray(val)) {
         const obj = val as Record<string, any>;
         if ("unit" in obj && "size" in obj && !("top" in obj) && !("sizes" in obj)) {

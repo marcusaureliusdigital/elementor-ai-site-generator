@@ -1,7 +1,7 @@
 "use client";
 
 import { useState } from "react";
-import type { SiteBlueprint, PageDef, CptDef } from "@/lib/types";
+import type { SiteBlueprint, PageDef } from "@/lib/types";
 
 interface BlueprintEditorProps {
   blueprint: SiteBlueprint;

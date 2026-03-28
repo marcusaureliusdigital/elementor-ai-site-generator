@@ -1,3 +1,4 @@
+/* eslint-disable @typescript-eslint/no-explicit-any */
 /**
  * Post-processing utilities for LLM-generated Elementor JSON.
  *
@@ -51,6 +52,52 @@ export function validateTemplateJson(jsonStr: string): {
   return { valid: true, parsed };
 }
 
+/** All valid Elementor widget types — sourced from real Elementor Pro templates */
+const VALID_WIDGET_TYPES = new Set([
+  // Basic
+  "heading", "text-editor", "button", "image", "icon", "icon-box", "icon-list",
+  "counter", "divider", "rating", "html", "menu-anchor", "search", "search-form",
+  // Pro
+  "form", "posts", "testimonial", "testimonial-carousel", "image-carousel",
+  "nested-accordion", "nested-tabs", "nested-carousel",
+  "loop-grid", "loop-carousel", "nav-menu", "mega-menu", "off-canvas",
+  "table-of-contents", "progress-tracker", "animated-headline", "breadcrumbs",
+  // Theme Builder
+  "theme-post-title", "theme-post-content", "theme-post-excerpt",
+  "theme-post-featured-image", "theme-archive-title",
+  "theme-site-logo", "theme-site-title",
+  "author-box", "post-info", "post-navigation", "share-buttons",
+  "archive-posts", "taxonomy-filter",
+  // i18n
+  "wpml-language-switcher",
+  // Legacy
+  "accordion",
+]);
+
+/** Common LLM hallucinations → correct widget type */
+const WIDGET_TYPE_FIXES: Record<string, string> = {
+  "related-posts": "posts",
+  "Related-posts": "posts",
+  "related_posts": "posts",
+  "blog-posts": "posts",
+  "post-grid": "posts",
+  "post-carousel": "loop-carousel",
+  "post-list": "posts",
+  "site-logo": "theme-site-logo",
+  "site-title": "theme-site-title",
+  "post-title": "theme-post-title",
+  "post-content": "theme-post-content",
+  "post-excerpt": "theme-post-excerpt",
+  "post-featured-image": "theme-post-featured-image",
+  "featured-image": "theme-post-featured-image",
+  "archive-title": "theme-archive-title",
+  "social-share": "share-buttons",
+  "social-icons": "share-buttons",
+  "toc": "table-of-contents",
+  "tabs": "nested-tabs",
+  "carousel": "nested-carousel",
+};
+
 /** Nested widgets that legitimately have child containers */
 const NESTED_WIDGET_TYPES = new Set([
   "nested-accordion",
@@ -78,6 +125,13 @@ function validateElements(elements: ElementorElement[], depth = 0): string[] {
 
     if (!Array.isArray(el.elements)) {
       errors.push(`Missing elements array for element ${el.id}`);
+    }
+
+    // Validate widget type is known
+    if (el.elType === "widget" && el.widgetType) {
+      if (!VALID_WIDGET_TYPES.has(el.widgetType)) {
+        errors.push(`Unknown widget type "${el.widgetType}" on element ${el.id}`);
+      }
     }
 
     // Widgets must not have children — EXCEPT nested widgets which require child containers
@@ -142,6 +196,33 @@ export function normalizeImageUrls(jsonStr: string): string {
 }
 
 /**
+ * Auto-fixes hallucinated widget types to their correct Elementor equivalents.
+ * Must run BEFORE validation so the corrected types pass the whitelist check.
+ */
+function fixWidgetTypes(elements: ElementorElement[]): void {
+  for (const el of elements) {
+    if (el.elType === "widget" && el.widgetType) {
+      const fix = WIDGET_TYPE_FIXES[el.widgetType];
+      if (fix) {
+        const original = el.widgetType;
+        el.widgetType = fix;
+
+        // If fixing "related-posts" → "posts", inject related query settings
+        if (original.toLowerCase().includes("related") && fix === "posts") {
+          const s = el.settings as Record<string, any>;
+          if (!s.posts_post_type) s.posts_post_type = "related";
+          if (!s.posts_exclude) s.posts_exclude = ["current_post"];
+          if (!s.posts_related_fallback) s.posts_related_fallback = "fallback_recent";
+        }
+      }
+    }
+    if (el.elements && el.elements.length > 0) {
+      fixWidgetTypes(el.elements);
+    }
+  }
+}
+
+/**
  * Recursively walks an element tree and applies normalization fixups:
  * - Adds "sizes": [] to { unit, size } dimension objects
  * - Adds background_background: "classic" on containers with background_color
@@ -179,7 +260,7 @@ function normalizeElementSettings(elements: ElementorElement[]): void {
     }
 
     // Add sizes: [] to dimension objects ({ unit, size } without top/right/bottom/left)
-    for (const [key, val] of Object.entries(s)) {
+    for (const val of Object.values(s)) {
       if (val && typeof val === "object" && !Array.isArray(val)) {
         const obj = val as Record<string, any>;
         if ("unit" in obj && "size" in obj && !("top" in obj) && !("sizes" in obj)) {
@@ -225,6 +306,8 @@ export function cleanLlmJson(raw: string): string {
     if (parsed.content && Array.isArray(parsed.content)) {
       let changed = false;
 
+      // Auto-fix hallucinated widget types before validation
+      fixWidgetTypes(parsed.content);
       // Normalize element tree: fix backgrounds, typography, flex_gap, sizes
       normalizeElementSettings(parsed.content);
       changed = true;

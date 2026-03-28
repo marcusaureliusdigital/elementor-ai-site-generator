@@ -2,6 +2,24 @@
 
 export type GenerationMode = "website" | "landing-page";
 
+// ── Upload Types ────────────────────────────────────────────────
+
+export type UploadedFileKind = "image" | "html" | "css" | "json" | "zip" | "text";
+
+export interface UploadedFile {
+  name: string;
+  kind: UploadedFileKind;
+  mimeType: string;
+  sizeBytes: number;
+  base64?: string;       // images only — for multimodal LLM vision
+  textContent?: string;  // non-images — extracted text for prompt injection
+}
+
+export interface UploadContext {
+  images: UploadedFile[];    // sent as image parts to the LLM
+  documents: UploadedFile[]; // injected as text context in the user prompt
+}
+
 // ── Blueprint Types ──────────────────────────────────────────────
 
 export interface SiteBlueprint {

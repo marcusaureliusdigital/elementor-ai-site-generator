@@ -1,3 +1,4 @@
+/* eslint-disable @typescript-eslint/no-explicit-any */
 import { generateObject, generateText } from "ai";
 import { getModel, type ModelId } from "../ai-provider";
 import { z } from "zod";
@@ -14,16 +15,14 @@ function extractJson(text: string): string {
   return text.trim();
 }
 
-const ElementSchema: z.ZodType<any> = z.lazy(() =>
-  z.object({
-    id: z.string(),
-    elType: z.enum(["container", "widget", "column", "section"]),
-    isInner: z.boolean().optional(),
-    widgetType: z.string().optional(),
-    settings: z.string().optional(),
-    elements: z.array(ElementSchema),
-  })
-);
+const ElementSchema = z.object({
+  id: z.string(),
+  elType: z.enum(["container", "widget", "column", "section"]),
+  isInner: z.boolean().optional(),
+  widgetType: z.string().optional(),
+  settings: z.string().optional(),
+  elements: z.array(z.any()).optional().describe("Child elements following the same flat structure"),
+});
 
 /**
  * Recover stringified settings into proper JSON objects (recursively).

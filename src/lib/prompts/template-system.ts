@@ -111,7 +111,7 @@ Available widgets and their key settings:
 - email_subject: "New Contact Form Submission"
 
 ### posts (Posts widget)
-- skin: "classic"
+- skin: "classic" | "cards"
 - posts_per_page: 3
 - columns: 3
 - thumbnail: "yes"
@@ -121,6 +121,33 @@ Available widgets and their key settings:
 - excerpt_length: 20
 - meta_data: ["date", "comments"]
 - read_more_text: "Read More"
+- pagination_type: "numbers" | "load_more_on_click" | "" (none)
+- posts_post_type: "by_id" | "current_query" | "related"
+- posts_exclude: ["current_post"] (for related posts)
+- posts_related_fallback: "fallback_recent"
+
+### Related Posts Pattern (CRITICAL — no "related-posts" widget exists!)
+There is NO widget called "related-posts". To show related posts, use the standard "posts" widget:
+{
+  "widgetType": "posts",
+  "settings": {
+    "skin": "classic",
+    "posts_post_type": "related",
+    "posts_exclude": ["current_post"],
+    "posts_related_fallback": "fallback_recent",
+    "classic_posts_per_page": 3,
+    "classic_read_more_text": "Keep reading »"
+  }
+}
+
+### loop-grid
+- template_id: LOOP_ITEM_TEMPLATE_ID
+- posts_per_page: 6
+- columns: 3
+- pagination_type: "numbers" | "load_more_on_click"
+- pagination_prev_label: "Previous"
+- pagination_next_label: "Next"
+- nothing_found_message_text: "It seems we can't find what you're looking for."
 
 ### loop-carousel
 - template_id: "TEMPLATE_ID"
@@ -137,6 +164,65 @@ Available widgets and their key settings:
 - slides_to_show: "4"
 - autoplay: "yes"
 - image_stretch: "no"
+
+## Theme Builder Widgets
+
+These widgets are for theme templates (single post, archive, header, footer). They render dynamic WordPress content.
+
+### theme-post-title
+- __dynamic__: { title: '[elementor-tag id="ID" name="post-title" settings="%7B%7D"]' }
+- title: "Add Your Heading Text Here" (fallback text)
+- align: "left" | "center" | "right"
+
+### theme-post-content
+- Renders the full post/page content. No required settings.
+- align: "left" | "center" | "right"
+
+### theme-post-featured-image
+- __dynamic__: { image: '[elementor-tag id="ID" name="post-featured-image" settings="%7B%7D"]' }
+- image_size: "full"
+- width: { unit: "%", size: 100 }
+- object-fit: "cover"
+
+### theme-post-excerpt
+- __dynamic__: { excerpt: '[elementor-tag id="ID" name="post-excerpt" settings="%7B%22length%22%3A%2225%22%7D"]' }
+
+### theme-archive-title
+- __dynamic__: { title: '[elementor-tag id="ID" name="archive-title" settings="%7B%7D"]' }
+
+### author-box
+- layout: "left" | "right"
+- alignment: "left" | "center"
+- show_avatar: "" (show) | "none" (hide)
+- author_name_tag: "span" | "h3" | "h4"
+- show_biography: "" | "none"
+- link_to: "posts_archive" | "website" | ""
+
+### post-navigation
+- show_label: "yes" | "no"
+- prev_label: "Previous"
+- next_label: "Next"
+
+### share-buttons
+- share_buttons: [{ button: "facebook", _id: "ID" }, { button: "twitter", _id: "ID" }, { button: "linkedin", _id: "ID" }]
+- view: "icon" | "text" | "icon-text"
+- skin: "minimal" | "gradient" | "framed" | "boxed" | "flat"
+- shape: "circle" | "square"
+- color_source: "custom" | "official"
+
+### table-of-contents
+- title: "Table of Contents"
+- html_tag: "h3"
+- headings_by_tags: ["h2", "h3"]
+- marker_view: "numbers" | "bullets"
+- minimize_box: "" | "yes"
+
+### post-info
+- Displays post meta (date, author, categories, etc.)
+- layout: "default" | "inline"
+
+### taxonomy-filter
+- taxonomy: "category" | "post_tag" | custom taxonomy name
 
 ## __globals__ References
 
