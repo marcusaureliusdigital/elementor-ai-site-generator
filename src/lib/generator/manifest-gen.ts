@@ -15,6 +15,14 @@ export interface ManifestContext {
   navMenuItemIds: Record<string, number>;
   /** All WXR content items by post type: { page: [{id, title}], post: [...], ... } */
   wpContentItems: Record<string, { id: number; title: string }[]>;
+  /**
+   * Optional: only include these template IDs (string form) in the manifest.
+   * Used to drop entries whose LLM generation failed so the manifest never
+   * references files that aren't on disk.
+   */
+  generatedTemplateIds?: Set<string>;
+  /** Optional: only include these page IDs (string form) in the manifest. */
+  generatedPageIds?: Set<string>;
 }
 
 export function generateManifest(
@@ -53,6 +61,11 @@ export function generateManifest(
   > = {};
 
   for (const tpl of templates) {
+    const tplId = String(tpl.id);
+    if (context.generatedTemplateIds && !context.generatedTemplateIds.has(tplId)) {
+      continue;
+    }
+
     const entry: (typeof templatesMap)[string] = {
       title: tpl.title,
       doc_type: tpl.docType,
@@ -67,7 +80,7 @@ export function generateManifest(
       entry.conditions = tpl.conditions;
     }
 
-    templatesMap[String(tpl.id)] = entry;
+    templatesMap[tplId] = entry;
   }
 
   // ── Taxonomies map (keyed by post type, value is array of taxonomy defs) ──
@@ -118,7 +131,11 @@ export function generateManifest(
   > = {};
 
   for (const page of pages) {
-    contentPages[String(page.id)] = {
+    const pageId = String(page.id);
+    if (context.generatedPageIds && !context.generatedPageIds.has(pageId)) {
+      continue;
+    }
+    contentPages[pageId] = {
       title: page.title,
       excerpt: "",
       doc_type: "wp-page",

@@ -40,5 +40,6 @@ export async function GET(req: NextRequest) {
     progress: job.progress,
     files,
     error: job.error,
+    warnings: job.warnings,
   });
 }

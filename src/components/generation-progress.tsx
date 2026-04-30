@@ -14,6 +14,7 @@ interface StatusResponse {
   progress: number;
   files: Record<string, FileState>;
   error?: string;
+  warnings?: string[];
 }
 
 const STATUS_ICONS: Record<string, string> = {
@@ -102,6 +103,18 @@ export function GenerationProgress({ jobId, mode = "website", onComplete }: Gene
             ? "Building sections and content..."
             : "Building templates, pages, and content files..."}
         </p>
+        {isError && status?.warnings && status.warnings.length > 0 && (
+          <details className="max-w-md mx-auto text-left mt-3 px-4 py-3 bg-red-500/5 border border-red-500/20 rounded-lg">
+            <summary className="text-xs text-red-300/90 hover:text-red-200 cursor-pointer select-none font-medium">
+              Per-item failure details ({status.warnings.length})
+            </summary>
+            <ul className="mt-2 space-y-1 text-xs text-red-200/80 list-disc list-inside">
+              {status.warnings.map((w, i) => (
+                <li key={i} className="break-words">{w}</li>
+              ))}
+            </ul>
+          </details>
+        )}
       </div>
 
       {/* Progress bar */}

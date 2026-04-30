@@ -5,10 +5,10 @@ import { resolve } from "path";
 
 // ── Model types ────────────────────────────────────────────────────
 
-export type ModelId = "claude-opus-4-6" | "gemini-3.1-pro-preview";
+export type ModelId = "claude-opus-4-7" | "gemini-3.1-pro-preview";
 
 export const MODEL_OPTIONS: { id: ModelId; label: string; provider: "anthropic" | "google" }[] = [
-  { id: "claude-opus-4-6", label: "Claude Opus 4.6", provider: "anthropic" },
+  { id: "claude-opus-4-7", label: "Claude Opus 4.7", provider: "anthropic" },
   { id: "gemini-3.1-pro-preview", label: "Gemini 3.1 Pro", provider: "google" },
 ];
 
@@ -61,12 +61,69 @@ function getGoogleProvider() {
 
 export function getModel(modelId: ModelId) {
   switch (modelId) {
-    case "claude-opus-4-6":
-      return getAnthropicProvider()("claude-opus-4-6");
+    case "claude-opus-4-7":
+      return getAnthropicProvider()("claude-opus-4-7");
     case "gemini-3.1-pro-preview":
       return getGoogleProvider()("gemini-3.1-pro-preview");
     default:
       throw new Error(`Unknown model: ${modelId}`);
   }
+}
+
+// ── generateObject hardening for Anthropic ─────────────────────────
+
+/**
+ * Force Anthropic's native structured-output path (output_config.format)
+ * instead of the legacy "json tool" wrapper. The provider's model-capability
+ * lookup in @ai-sdk/anthropic 3.0.58 doesn't yet know about claude-opus-4-7
+ * and falls through to a catch-all that disables native structured output —
+ * without this override, opus-4-7 ends up calling a tool literally named
+ * "json" and wraps its answer as `{"value": {...}}`, which fails schema
+ * validation. Forcing "outputFormat" routes us to the same path that already
+ * works for opus-4-5 / 4-6.
+ *
+ * Spread this into the `providerOptions` of every `generateObject` call.
+ */
+export const anthropicProviderOptions = {
+  anthropic: {
+    structuredOutputMode: "outputFormat" as const,
+  },
+};
+
+/**
+ * Defensive repair pass for `generateObject` outputs. Strips markdown code
+ * fences, leading/trailing prose, and the legacy `{"value": <object>}`
+ * envelope emitted by older Anthropic tool-mode paths when the model isn't
+ * routed to native structured output. Returns null when nothing useful is
+ * recoverable.
+ *
+ * Pass as `experimental_repairText` on every `generateObject` call.
+ */
+export async function repairJsonText({ text }: { text: string }): Promise<string | null> {
+  let trimmed = text.trim();
+  const fence = trimmed.match(/```(?:json)?\s*([\s\S]*?)```/i);
+  if (fence) trimmed = fence[1].trim();
+  const first = trimmed.indexOf("{");
+  const last = trimmed.lastIndexOf("}");
+  if (first === -1 || last === -1 || last <= first) return null;
+  const slice = trimmed.slice(first, last + 1);
+
+  try {
+    const parsed = JSON.parse(slice);
+    if (
+      parsed &&
+      typeof parsed === "object" &&
+      !Array.isArray(parsed) &&
+      Object.keys(parsed).length === 1 &&
+      "value" in parsed &&
+      parsed.value &&
+      typeof parsed.value === "object"
+    ) {
+      return JSON.stringify(parsed.value);
+    }
+  } catch {
+    // fall through — return raw slice and let generateObject's parser report
+  }
+  return slice;
 }
 

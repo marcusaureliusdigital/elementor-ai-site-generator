@@ -43,6 +43,13 @@ export function validateTemplateJson(jsonStr: string): {
     return { valid: false, error: "Empty content array" };
   }
 
+  // Tree-shape sanity check — catches the "flat sibling list" failure mode
+  // where the LLM emits every element at top level with empty `elements: []`.
+  const shapeError = validateTreeShape(parsed.content);
+  if (shapeError) {
+    return { valid: false, error: shapeError };
+  }
+
   // Validate each element recursively
   const elementErrors = validateElements(parsed.content);
   if (elementErrors.length > 0) {
@@ -50,6 +57,33 @@ export function validateTemplateJson(jsonStr: string): {
   }
 
   return { valid: true, parsed };
+}
+
+/**
+ * Detects flat-sibling output (children emitted as siblings of their parent
+ * container instead of nested inside it). Real Elementor exports always have
+ * containers at top level — never widgets — and at least one of them carries
+ * children. Either signal alone is enough to reject and trigger retry.
+ */
+function validateTreeShape(content: ElementorElement[]): string | null {
+  const flatMessage =
+    "Element tree is flat. Re-emit as a TREE: every container's children must live INSIDE that container's own `elements` array, not as siblings at the top level. Top-level `content` must contain only containers, and inner containers/widgets must be nested recursively inside their parent container's `elements` array.";
+
+  const topLevelWidget = content.find((el) => el.elType === "widget");
+  if (topLevelWidget) {
+    return `${flatMessage} (Found widget "${topLevelWidget.widgetType ?? topLevelWidget.id}" at top level.)`;
+  }
+
+  if (content.length >= 2) {
+    const allEmpty = content.every(
+      (el) => el.elType === "container" && (!Array.isArray(el.elements) || el.elements.length === 0)
+    );
+    if (allEmpty) {
+      return flatMessage;
+    }
+  }
+
+  return null;
 }
 
 /** All valid Elementor widget types — sourced from real Elementor Pro templates */

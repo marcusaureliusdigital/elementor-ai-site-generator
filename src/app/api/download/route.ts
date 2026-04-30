@@ -68,6 +68,7 @@ export async function GET(req: NextRequest) {
     taxonomies: {},
     contentPages: {},
     wpContent: {},
+    binaryFiles: job.mediaFiles,
   };
 
   for (const [key, content] of Object.entries(allFiles)) {

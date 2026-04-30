@@ -15,7 +15,7 @@ export async function POST(req: NextRequest) {
   try {
     const body = await req.json();
     const mode: GenerationMode = body.mode || "website";
-    const modelId: ModelId = body.modelId || "claude-opus-4-6";
+    const modelId: ModelId = body.modelId || "claude-opus-4-7";
     const jobId = randomUUID();
 
     if (mode === "landing-page") {

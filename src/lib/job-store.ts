@@ -102,6 +102,23 @@ export function setFileGenerating(id: string, fileKey: string) {
   updateFile(id, fileKey, { status: "generating" });
 }
 
+export function setJobWarnings(id: string, warnings: string[]) {
+  const job = jobs.get(id);
+  if (job) {
+    job.warnings = warnings.length > 0 ? warnings : undefined;
+  }
+}
+
+export function setJobMediaFiles(
+  id: string,
+  mediaFiles: { path: string; bytes: Uint8Array }[]
+) {
+  const job = jobs.get(id);
+  if (job) {
+    job.mediaFiles = mediaFiles.length > 0 ? mediaFiles : undefined;
+  }
+}
+
 function recalcProgress(job: JobState) {
   const entries = Object.values(job.files);
   if (entries.length === 0) return;

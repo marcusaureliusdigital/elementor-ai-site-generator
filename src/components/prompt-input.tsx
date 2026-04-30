@@ -5,7 +5,7 @@ import { useState, useRef, useCallback, useMemo, useEffect } from "react";
 import type { GenerationMode } from "@/lib/types";
 
 const MODEL_OPTIONS = [
-  { id: "claude-opus-4-6", label: "Claude Opus 4.6" },
+  { id: "claude-opus-4-7", label: "Claude Opus 4.7" },
   { id: "gemini-3.1-pro-preview", label: "Gemini 3.1 Pro" },
 ];
 
@@ -48,7 +48,7 @@ interface PromptInputProps {
 
 export function PromptInput({ onSubmit, isLoading }: PromptInputProps) {
   const [value, setValue] = useState("");
-  const [modelId, setModelId] = useState("claude-opus-4-6");
+  const [modelId, setModelId] = useState("claude-opus-4-7");
   const [mode, setMode] = useState<GenerationMode>("website");
   const [files, setFiles] = useState<File[]>([]);
   const [isDragging, setIsDragging] = useState(false);

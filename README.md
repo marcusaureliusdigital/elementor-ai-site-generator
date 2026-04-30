@@ -11,7 +11,7 @@ Important note: This project was built for fun and is still under active develop
 ## Features
 
 - **Two generation modes** — full multi-page website (site kit with header, footer, templates, pages) or single landing page
-- **Dual AI model support** — Claude Opus 4.6 (Anthropic) and Gemini 3.1 Pro (Google), selectable per generation
+- **Dual AI model support** — Claude Opus 4.7 (Anthropic) and Gemini 3.1 Pro (Google), selectable per generation
 - **Blueprint review** — AI proposes a site plan (pages, colors, typography, sections) that you can edit before generation starts
 - **Brand asset injection** — your brand identity (colors, fonts, voice, logo, background texture) is automatically included in every AI prompt
 - **Elementor Pro compatible** — output matches real Elementor export format with containers, flexbox, nested widgets (nested-accordion, nested-tabs, nested-carousel), and page-level custom CSS

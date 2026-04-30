@@ -164,6 +164,61 @@ export interface SiteKitFiles {
   taxonomies: Record<string, string>;
   contentPages: Record<string, string>;
   wpContent: Record<string, string>;
+  /** Binary media to copy verbatim into the zip. Path is relative to the kit root. */
+  binaryFiles?: { path: string; bytes: Uint8Array }[];
+}
+
+// ── Brand Media (raw assets for kit emission) ───────────────────
+
+export type BrandMediaRole = "logo" | "photo" | "icon" | "other";
+
+export interface BrandMediaFile {
+  /** Path relative to brand-assets/, e.g. "Assets/logo/wordmark.svg". */
+  path: string;
+  /** Filename without directories, e.g. "wordmark.svg". */
+  filename: string;
+  /** Lowercased extension including the dot, e.g. ".svg". */
+  ext: string;
+  /** MIME type, e.g. "image/svg+xml". */
+  mimeType: string;
+  /** Raw file bytes. */
+  bytes: Uint8Array;
+  /** Inferred role from path/filename — drives whether the file is treated as the site logo, etc. */
+  role: BrandMediaRole;
+}
+
+// ── Media Plan (attachments to ship in the kit) ─────────────────
+
+export interface AttachmentRecord {
+  /** WordPress post ID for the attachment. */
+  id: number;
+  /** Stable slug used in URLs and filenames, e.g. "wordmark-lockup". */
+  slug: string;
+  /** Filename inside wp-content/uploads/YYYY/MM/, e.g. "wordmark-lockup.svg". */
+  filename: string;
+  /** Public URL for the attachment, e.g. "https://example.com/wp-content/uploads/2026/04/wordmark-lockup.svg". */
+  url: string;
+  /** Path inside the kit zip, e.g. "wp-content/uploads/2026/04/wordmark-lockup.svg". */
+  zipPath: string;
+  /** MIME type. */
+  mimeType: string;
+  /** Width in pixels (0 for SVG). */
+  width: number;
+  /** Height in pixels (0 for SVG). */
+  height: number;
+  /** Role hint — used by prompts to pick the right image. */
+  role: BrandMediaRole;
+  /** Human-readable title shown in the WP media library. */
+  title: string;
+}
+
+export interface MediaPlan {
+  attachments: AttachmentRecord[];
+  files: { path: string; bytes: Uint8Array }[];
+  /** Attachment ID for the site logo, when one was found. Used to set custom_logo. */
+  logoAttachmentId?: number;
+  /** Lookup helper for prompt injection — model picks images by slug. */
+  bySlug: Record<string, AttachmentRecord>;
 }
 
 // ── Job State ───────────────────────────────────────────────────
@@ -187,5 +242,8 @@ export interface JobState {
   files: Record<string, FileState>;
   progress: number;
   error?: string;
+  warnings?: string[];
   createdAt: number;
+  /** Binary media files (logo, brand assets) to copy into the kit zip. */
+  mediaFiles?: { path: string; bytes: Uint8Array }[];
 }

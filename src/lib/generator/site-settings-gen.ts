@@ -1,4 +1,4 @@
-import type { SiteBlueprint } from "../types";
+import type { SiteBlueprint, MediaPlan } from "../types";
 import { IdManager } from "../id-manager";
 
 /**
@@ -26,7 +26,8 @@ export interface SiteSettingsIds {
 
 export function generateSiteSettings(
   blueprint: SiteBlueprint,
-  idMgr: IdManager
+  idMgr: IdManager,
+  mediaPlan?: MediaPlan
 ): { json: string; ids: SiteSettingsIds } {
   const { colors, typography } = blueprint;
 
@@ -164,11 +165,43 @@ export function generateSiteSettings(
       button_border_radius: { unit: "px", top: "8", right: "8", bottom: "8", left: "8" },
       button_hover_background_color: colors.accent,
 
-      // Form styles
+      // Form styles — applied at site-settings level so generated forms inherit
+      // styling automatically when the model omits per-widget styling.
       form_field_typography_typography: "custom",
       form_field_typography_font_family: typography.bodyFont,
+      form_field_typography_font_size: { unit: "px", size: 15 },
+      form_field_text_color: colors.text,
+      form_field_background_color: colors.white,
+      form_field_border_color: colors.text,
+      form_field_border_width: { unit: "px", top: "1", right: "1", bottom: "1", left: "1", isLinked: true },
+      form_field_border_radius: { unit: "px", top: "6", right: "6", bottom: "6", left: "6", isLinked: true },
       form_label_typography_typography: "custom",
       form_label_typography_font_family: typography.bodyFont,
+      form_label_typography_font_size: { unit: "px", size: 13 },
+      form_label_typography_font_weight: "600",
+      form_label_typography_text_transform: "uppercase",
+      form_label_typography_letter_spacing: { unit: "px", size: 1 },
+      form_label_color: colors.text,
+      form_label_spacing: { unit: "px", size: 8 },
+      form_row_gap: { unit: "px", size: 18 },
+      form_column_gap: { unit: "px", size: 18 },
+      form_button_typography_typography: "custom",
+      form_button_typography_font_family: typography.bodyFont,
+      form_button_typography_font_weight: "600",
+      form_button_background_color: colors.primary,
+      form_button_text_color: colors.white,
+      form_button_background_hover_color: colors.accent,
+      form_button_border_radius: { unit: "px", top: "8", right: "8", bottom: "8", left: "8", isLinked: true },
+      form_button_text_padding: { unit: "px", top: "14", right: "28", bottom: "14", left: "28", isLinked: false },
+
+      // Customizer / theme: site logo + favicon. WP uses these for the
+      // `theme-site-logo` widget, the admin bar, and the browser tab.
+      ...(mediaPlan?.logoAttachmentId
+        ? {
+            custom_logo: mediaPlan.logoAttachmentId,
+            site_icon: mediaPlan.logoAttachmentId,
+          }
+        : {}),
     },
     metadata: [],
   };

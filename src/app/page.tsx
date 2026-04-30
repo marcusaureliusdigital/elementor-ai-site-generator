@@ -13,7 +13,7 @@ type Phase = "prompt" | "blueprint" | "generating" | "done";
 export default function Home() {
   const [phase, setPhase] = useState<Phase>("prompt");
   const [mode, setMode] = useState<GenerationMode>("website");
-  const [modelId, setModelId] = useState("claude-opus-4-6");
+  const [modelId, setModelId] = useState("claude-opus-4-7");
   const [blueprint, setBlueprint] = useState<SiteBlueprint | null>(null);
   const [landingBlueprint, setLandingBlueprint] = useState<LandingPageBlueprint | null>(null);
   const [jobId, setJobId] = useState<string | null>(null);

@@ -22,7 +22,11 @@
 
 # misc
 .DS_Store
+**/.DS_Store
 *.pem
+
+# brand assets (per-client/per-developer materials; not for public repo)
+/brand-assets/
 
 # debug
 npm-debug.log*

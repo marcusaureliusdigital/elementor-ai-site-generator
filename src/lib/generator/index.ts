@@ -4,6 +4,8 @@ import {
   createJob,
   getJob,
   setJobStatus,
+  setJobWarnings,
+  setJobMediaFiles,
   registerFile,
   setFileContent,
   setFileError,
@@ -17,6 +19,8 @@ import { generateCustomCode } from "./custom-code-gen";
 import { generateCustomFonts } from "./custom-fonts-gen";
 import { generateTemplate } from "./template-gen";
 import { generatePageContent } from "./page-content-gen";
+import { buildMediaPlan } from "./media-gen";
+import { BRAND_MEDIA } from "../brand";
 import type { SiteBlueprint } from "../types";
 
 /**
@@ -33,7 +37,7 @@ import type { SiteBlueprint } from "../types";
 export async function generateSiteKit(
   jobId: string,
   blueprint: SiteBlueprint,
-  modelId: ModelId = "claude-opus-4-6"
+  modelId: ModelId = "claude-opus-4-7"
 ): Promise<void> {
   createJob(jobId, blueprint);
   const idMgr = new IdManager(500); // start post IDs at 500 to avoid conflicts
@@ -80,13 +84,28 @@ export async function generateSiteKit(
   setJobStatus(jobId, "generating");
 
   try {
+    // ── Phase 0: Media plan (deterministic, runs first) ──────────
+    //
+    // Allocates attachment IDs and stages brand-asset files for the kit zip.
+    // Built up-front so site-settings can reference the logo (`custom_logo`)
+    // and downstream prompts can pass real attachment URLs to the model.
+
+    const mediaPlan = buildMediaPlan(blueprint, BRAND_MEDIA, idMgr);
+    if (mediaPlan.attachments.length > 0) {
+      registerFile(jobId, "wxr:attachment", "Media Attachments WXR");
+    }
+    if (mediaPlan.files.length > 0) {
+      setJobMediaFiles(jobId, mediaPlan.files);
+    }
+
     // ── Phase 1: Deterministic files ─────────────────────────────
 
     // Site settings
     setFileGenerating(jobId, "site-settings");
     const { json: siteSettingsJson, ids: settingsIds } = generateSiteSettings(
       blueprint,
-      idMgr
+      idMgr,
+      mediaPlan
     );
     setFileContent(jobId, "site-settings", siteSettingsJson);
 
@@ -106,18 +125,29 @@ export async function generateSiteKit(
 
     // ── Phase 2: Templates (LLM, sequential) ─────────────────────
 
-    // Sort templates: header first, footer second, then rest
+    // Sort templates so loop-items generate FIRST — archives need their IDs
+    // to wire `loop-grid template_id`. Then header → footer → singles →
+    // archive → 404. (Header gets the logo attachment; everyone else is
+    // independent.)
     const sortedTemplates = [...blueprint.templates].sort((a, b) => {
       const order: Record<string, number> = {
-        header: 0,
-        footer: 1,
-        "single-post": 2,
-        archive: 3,
-        "loop-item": 4,
-        "error-404": 5,
+        "loop-item": 0,
+        header: 1,
+        footer: 2,
+        "single-post": 3,
+        "single-page": 4,
+        archive: 5,
+        "error-404": 6,
       };
       return (order[a.docType] ?? 10) - (order[b.docType] ?? 10);
     });
+
+    // Build template ID map incrementally so archives that come after their
+    // matching loop-items can resolve `template_id` references.
+    const templateIdMap: Record<string, number> = {};
+    for (const tpl of blueprint.templates) {
+      templateIdMap[tpl.title] = tpl.id;
+    }
 
     for (const tpl of sortedTemplates) {
       setFileGenerating(jobId, `template:${tpl.id}`);
@@ -127,6 +157,8 @@ export async function generateSiteKit(
           blueprint,
           idMgr,
           settingsIds,
+          templateIdMap,
+          mediaPlan,
           modelId
         );
         setFileContent(jobId, `template:${tpl.id}`, templateJson);
@@ -139,12 +171,6 @@ export async function generateSiteKit(
 
     // ── Phase 3: Page Content (LLM, sequential) ──────────────────
 
-    // Build template ID map for loop-carousel references
-    const templateIdMap: Record<string, number> = {};
-    for (const tpl of blueprint.templates) {
-      templateIdMap[tpl.title] = tpl.id;
-    }
-
     for (const page of blueprint.pages) {
       setFileGenerating(jobId, `page:${page.id}`);
       try {
@@ -154,6 +180,7 @@ export async function generateSiteKit(
           idMgr,
           settingsIds,
           templateIdMap,
+          mediaPlan,
           modelId
         );
         setFileContent(jobId, `page:${page.id}`, pageJson);
@@ -164,12 +191,66 @@ export async function generateSiteKit(
       }
     }
 
+    // ── Compute success sets (used by WXR + manifest) ────────────
+    //
+    // Both WXR and manifest must reflect only the templates/pages that
+    // actually generated, so Elementor's importer never sees an ID without
+    // backing content and WP never imports a page record without Elementor
+    // JSON to render. Computed here, before Phase 4, so WXR can filter.
+
+    const jobAfterContent = getJob(jobId);
+    const generatedTemplateIds = new Set<string>();
+    const generatedPageIds = new Set<string>();
+    const warnings: string[] = [];
+
+    if (jobAfterContent) {
+      for (const tpl of blueprint.templates) {
+        const file = jobAfterContent.files[`template:${tpl.id}`];
+        if (file && file.status === "done") {
+          generatedTemplateIds.add(String(tpl.id));
+        } else {
+          warnings.push(
+            `Template "${tpl.title}" (id ${tpl.id}) failed to generate — excluded from manifest. Reason: ${file?.error ?? "unknown"}`
+          );
+        }
+      }
+      for (const page of blueprint.pages) {
+        const file = jobAfterContent.files[`page:${page.id}`];
+        if (file && file.status === "done") {
+          generatedPageIds.add(String(page.id));
+        } else {
+          warnings.push(
+            `Page "${page.title}" (id ${page.id}) failed to generate — excluded from manifest. Reason: ${file?.error ?? "unknown"}`
+          );
+        }
+      }
+    }
+
+    // Fail-fast when every page failed: the kit would import as a set of
+    // blank-rendering WP pages with working header/footer only — worse than
+    // returning nothing, because it pollutes the user's WP install with
+    // empty page records that have to be deleted by hand.
+    if (blueprint.pages.length > 0 && generatedPageIds.size === 0) {
+      if (warnings.length > 0) {
+        console.warn("Site kit generation warnings:", warnings);
+        setJobWarnings(jobId, warnings);
+      }
+      setJobStatus(
+        jobId,
+        "error",
+        "All page generations failed — kit would import as blank pages. See warnings for per-page errors."
+      );
+      return;
+    }
+
     // ── Phase 4: WXR Files (deterministic) ───────────────────────
 
     setFileGenerating(jobId, "wxr:page");
     const wxrResult: WxrGenResult = generateWxrFiles({
       blueprint,
       idMgr,
+      generatedPageIds,
+      mediaPlan,
     });
 
     for (const [path, content] of Object.entries(wxrResult.files)) {
@@ -181,47 +262,25 @@ export async function generateSiteKit(
     // ── Phase 5: Manifest (deterministic, last) ──────────────────
 
     setFileGenerating(jobId, "manifest");
+
     const manifestContext: ManifestContext = {
       navMenuItemIds: wxrResult.navMenuItemIds,
       wpContentItems: wxrResult.wpContentItems,
+      generatedTemplateIds,
+      generatedPageIds,
     };
     const manifestJson = generateManifest(blueprint, manifestContext);
     setFileContent(jobId, "manifest", manifestJson);
 
-    // ── Phase 6: Cross-reference validation ──────────────────────
-
-    const manifestData = JSON.parse(manifestJson);
-    const warnings: string[] = [];
-
-    const currentJob = getJob(jobId);
-
-    // Check template IDs in manifest vs generated files
-    if (manifestData.templates && currentJob) {
-      for (const tplId of Object.keys(manifestData.templates)) {
-        const fileKey = `template:${tplId}`;
-        const file = currentJob.files[fileKey];
-        if (!file || file.status !== "done") {
-          warnings.push(`Template ${tplId} in manifest but not generated`);
-        }
-      }
-    }
-
-    // Check page IDs in manifest vs generated content
-    if (manifestData.content?.page && currentJob) {
-      for (const pageId of Object.keys(manifestData.content.page)) {
-        const fileKey = `page:${pageId}`;
-        const file = currentJob.files[fileKey];
-        if (!file || file.status !== "done") {
-          warnings.push(`Page ${pageId} in manifest but content not generated`);
-        }
-      }
-    }
-
-    if (warnings.length > 0) {
-      console.warn("Cross-reference warnings:", warnings);
-    }
-
     // ── Complete ─────────────────────────────────────────────────
+    //
+    // Set warnings BEFORE flipping status to "complete" so the next status
+    // poll sees both atomically — the client renders the warning banner on
+    // the same response that surfaces "ready to download".
+    if (warnings.length > 0) {
+      console.warn("Site kit generation warnings:", warnings);
+      setJobWarnings(jobId, warnings);
+    }
 
     setJobStatus(jobId, "complete");
   } catch (error) {

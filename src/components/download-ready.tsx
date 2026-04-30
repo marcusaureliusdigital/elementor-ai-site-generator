@@ -1,5 +1,6 @@
 "use client";
 
+import { useEffect, useState } from "react";
 import type { GenerationMode } from "@/lib/types";
 
 interface DownloadReadyProps {
@@ -11,6 +12,26 @@ interface DownloadReadyProps {
 
 export function DownloadReady({ jobId, siteName, mode, onStartOver }: DownloadReadyProps) {
   const isLandingPage = mode === "landing-page";
+  const [warnings, setWarnings] = useState<string[]>([]);
+
+  useEffect(() => {
+    let cancelled = false;
+    (async () => {
+      try {
+        const res = await fetch(`/api/status?jobId=${jobId}`);
+        if (!res.ok) return;
+        const data = (await res.json()) as { warnings?: string[] };
+        if (!cancelled && Array.isArray(data.warnings)) {
+          setWarnings(data.warnings);
+        }
+      } catch {
+        // Non-fatal — banner just won't render
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [jobId]);
 
   const handleDownload = async () => {
     const res = await fetch(`/api/download?jobId=${jobId}`);
@@ -74,6 +95,47 @@ export function DownloadReady({ jobId, siteName, mode, onStartOver }: DownloadRe
           {" file and import it into WordPress."}
         </p>
       </div>
+
+      {/* Warnings banner — partial-success kits */}
+      {warnings.length > 0 && (
+        <div className="max-w-md mx-auto text-left px-4 py-3 bg-yellow-500/10 border border-yellow-500/30 rounded-lg">
+          <div className="flex items-start gap-3">
+            <svg
+              width="18"
+              height="18"
+              viewBox="0 0 24 24"
+              fill="none"
+              stroke="#facc15"
+              strokeWidth="2"
+              strokeLinecap="round"
+              strokeLinejoin="round"
+              className="mt-0.5 flex-shrink-0"
+            >
+              <path d="M10.29 3.86L1.82 18a2 2 0 001.71 3h16.94a2 2 0 001.71-3L13.71 3.86a2 2 0 00-3.42 0z" />
+              <line x1="12" y1="9" x2="12" y2="13" />
+              <line x1="12" y1="17" x2="12.01" y2="17" />
+            </svg>
+            <div className="space-y-1.5 flex-1 min-w-0">
+              <p className="text-sm text-yellow-200 font-medium">
+                Generated with {warnings.length} {warnings.length === 1 ? "issue" : "issues"}
+              </p>
+              <p className="text-xs text-yellow-100/70">
+                Some templates or pages failed and are excluded from the kit. The rest will import normally.
+              </p>
+              <details className="group">
+                <summary className="text-xs text-yellow-200/80 hover:text-yellow-100 cursor-pointer select-none">
+                  Show details
+                </summary>
+                <ul className="mt-2 space-y-1 text-xs text-yellow-100/80 list-disc list-inside">
+                  {warnings.map((w, i) => (
+                    <li key={i} className="break-words">{w}</li>
+                  ))}
+                </ul>
+              </details>
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* Download button */}
       <button

@@ -53,6 +53,13 @@ export async function bundleSiteKit(files: SiteKitFiles): Promise<Uint8Array> {
     zip.file(`wp-content/${path}.xml`, content);
   }
 
+  // Binary media (logo, brand photos) — paths like "wp-content/uploads/2026/04/logo.svg"
+  if (files.binaryFiles) {
+    for (const f of files.binaryFiles) {
+      zip.file(f.path, f.bytes);
+    }
+  }
+
   const buffer = await zip.generateAsync({
     type: "uint8array",
     compression: "DEFLATE",

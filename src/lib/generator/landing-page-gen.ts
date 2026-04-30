@@ -5,13 +5,7 @@ import { LANDING_CONTENT_SYSTEM_PROMPT } from "../prompts/landing-content-system
 import { IdManager } from "../id-manager";
 import { validateTemplateJson } from "../post-processor";
 import { retryWithFeedback } from "./retry";
-import {
-  MARCUS_AURELIUS_BRAND,
-  FRONTEND_DESIGN,
-  BRAND_VOICE,
-  BACKGROUND_TEXTURE_BASE64,
-  LOGO_WHITE_NOISE_BASE64,
-} from "../brand";
+import { BRAND_SYSTEM_PREFIX, buildBrandImageParts } from "../brand";
 import {
   createJob,
   getJob,
@@ -265,7 +259,7 @@ function postProcessElements(
 export async function generateLandingPage(
   jobId: string,
   blueprint: LandingPageBlueprint,
-  modelId: ModelId = "claude-opus-4-6"
+  modelId: ModelId = "claude-opus-4-7"
 ): Promise<void> {
   // Create job with a dummy SiteBlueprint for backward compat
   const dummyBlueprint: SiteBlueprint = {
@@ -424,53 +418,21 @@ Each element:
 
 Return ONLY the JSON. No markdown, no explanation, no code fences.${errorFeedback}`;
 
-      // Build the full system prompt with brand assets prepended
-      const fullSystemPrompt = [
-        "# Brand Identity & Design Guidelines\n",
-        MARCUS_AURELIUS_BRAND,
-        "\n\n# Frontend Design Guidelines\n",
-        FRONTEND_DESIGN,
-        "\n\n# Brand Voice Profile\n",
-        BRAND_VOICE,
-        "\n\n---\n\n# Elementor Landing Page Builder Instructions\n",
-        LANDING_CONTENT_SYSTEM_PROMPT,
-      ].join("");
+      // Build the full system prompt with brand book prepended
+      const fullSystemPrompt = BRAND_SYSTEM_PREFIX + "# Elementor Landing Page Builder Instructions\n" + LANDING_CONTENT_SYSTEM_PROMPT;
 
-      // For Claude: include brand asset images as reference via messages array
-      // For Gemini: text-only (Gemini uses different image format)
-      const isClaude = modelId.startsWith("claude");
+      // Brand reference images (Claude only — see buildBrandImageParts) are
+      // prepended to the user content. Falls back to text-only if no images
+      // are present in brand-assets/ or if the model isn't Claude.
+      const brandImageParts = buildBrandImageParts(modelId);
+      const userContent = brandImageParts.length > 0
+        ? [...brandImageParts, { type: "text" as const, text: prompt }]
+        : [{ type: "text" as const, text: prompt }];
 
       const { text } = await generateText({
         model: getModel(modelId),
         system: fullSystemPrompt,
-        messages: [
-          {
-            role: "user",
-            content: isClaude
-              ? [
-                  {
-                    type: "image" as const,
-                    image: BACKGROUND_TEXTURE_BASE64,
-                    mediaType: "image/png",
-                  },
-                  {
-                    type: "image" as const,
-                    image: LOGO_WHITE_NOISE_BASE64,
-                    mediaType: "image/png",
-                  },
-                  {
-                    type: "text" as const,
-                    text: "Above: (1) The brand's signature background texture — dark noise gradient with warm gold glow and forest-green tint. Replicate this atmosphere in the landing page design via custom_css. (2) The brand logo — white noise texture on black. Use as visual reference for the brand aesthetic.\n\n" + prompt,
-                  },
-                ]
-              : [
-                  {
-                    type: "text" as const,
-                    text: prompt,
-                  },
-                ],
-          },
-        ],
+        messages: [{ role: "user", content: userContent }],
       });
 
       // Parse the JSON response

@@ -1,4 +1,4 @@
-import type { SiteBlueprint } from "../types";
+import type { SiteBlueprint, MediaPlan } from "../types";
 import { buildWxrXml, type WxrItem, type WxrPostMeta, type WxrCategory } from "../templates/wxr-boilerplate";
 import { IdManager } from "../id-manager";
 
@@ -18,8 +18,17 @@ import { IdManager } from "../id-manager";
 interface WxrGenOptions {
   blueprint: SiteBlueprint;
   idMgr: IdManager;
+  /**
+   * IDs of pages whose Elementor JSON generated successfully. WXR page records
+   * and nav menu items are filtered to this set so we never ship orphan WP
+   * records pointing at missing Elementor content (which would render as blank
+   * theme pages).
+   */
+  generatedPageIds: Set<string>;
   /** Pre-generated HTML content for blog posts, keyed by post slug */
   postContent?: Record<string, string>;
+  /** Media (logo + brand assets) to emit as wp:attachment items. */
+  mediaPlan?: MediaPlan;
 }
 
 export interface WxrGenResult {
@@ -31,7 +40,7 @@ export interface WxrGenResult {
 }
 
 export function generateWxrFiles(options: WxrGenOptions): WxrGenResult {
-  const { blueprint, idMgr, postContent = {} } = options;
+  const { blueprint, idMgr, generatedPageIds, postContent = {}, mediaPlan } = options;
   const files: Record<string, string> = {};
   const navMenuItemIds: Record<string, number> = {};
   const wpContentItems: Record<string, { id: number; title: string }[]> = {};
@@ -42,9 +51,17 @@ export function generateWxrFiles(options: WxrGenOptions): WxrGenResult {
     displayName: blueprint.author.name,
   };
 
+  // Only emit WP records for pages whose Elementor JSON generated. Pages that
+  // failed are excluded everywhere — WXR items, manifest's wp-content.page,
+  // and the nav menu — so a partial-success kit doesn't ship orphan WP posts
+  // that WordPress would render as blank theme pages.
+  const successfulPages = blueprint.pages.filter((page) =>
+    generatedPageIds.has(String(page.id))
+  );
+
   // ── Pages WXR ──────────────────────────────────────────────────
 
-  const pageItems: WxrItem[] = blueprint.pages.map((page) => ({
+  const pageItems: WxrItem[] = successfulPages.map((page) => ({
     postId: page.id,
     title: page.title,
     slug: page.slug,
@@ -122,7 +139,7 @@ export function generateWxrFiles(options: WxrGenOptions): WxrGenResult {
 
   // ── Nav Menu Items WXR ─────────────────────────────────────────
 
-  const navItems: WxrItem[] = blueprint.pages.map((page, index) => {
+  const navItems: WxrItem[] = successfulPages.map((page, index) => {
     const navItemId = idMgr.allocatePostId();
     navMenuItemIds[page.title] = navItemId;
     return {
@@ -160,6 +177,44 @@ export function generateWxrFiles(options: WxrGenOptions): WxrGenResult {
     id: n.postId,
     title: n.title,
   }));
+
+  // ── Brand media attachments ────────────────────────────────────
+  //
+  // Brand-asset images (logo, photos, icons) ride in their own WXR file as
+  // attachment posts. WordPress imports each as a media-library entry; the
+  // companion file copies live under wp-content/uploads/<YYYY>/<MM>/.
+
+  if (mediaPlan && mediaPlan.attachments.length > 0) {
+    const attachItems: WxrItem[] = mediaPlan.attachments.map((a) => ({
+      postId: a.id,
+      title: a.title,
+      slug: a.slug,
+      postType: "attachment",
+      status: "inherit",
+      attachmentUrl: a.url,
+      postMeta: [
+        // _wp_attached_file is what WP looks up to find the file on disk.
+        { key: "_wp_attached_file", value: a.zipPath.replace(/^wp-content\/uploads\//, "") },
+        // Minimal _wp_attachment_metadata — width/height optional for SVG.
+        {
+          key: "_wp_attachment_metadata",
+          value: `a:5:{s:5:"width";i:${a.width};s:6:"height";i:${a.height};s:4:"file";s:${a.zipPath.replace(/^wp-content\/uploads\//, "").length}:"${a.zipPath.replace(/^wp-content\/uploads\//, "")}";s:5:"sizes";a:0:{}s:10:"image_meta";a:0:{}}`,
+        },
+      ],
+    }));
+
+    files["attachment/attachment"] = buildWxrXml({
+      siteName: blueprint.name,
+      siteUrl: blueprint.siteUrl,
+      author: wxrAuthor,
+      items: attachItems,
+    });
+
+    wpContentItems["attachment"] = attachItems.map((a) => ({
+      id: a.postId,
+      title: a.title,
+    }));
+  }
 
   // ── CPT WXR Files ──────────────────────────────────────────────
 
