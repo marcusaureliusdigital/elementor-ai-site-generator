@@ -1,6 +1,6 @@
 # Elementor AI Site Generator
 
-An AI-powered tool that generates complete, importable Elementor Pro site kits and landing pages from a text prompt. Built with Next.js, the Vercel AI SDK, and support for both Claude and Gemini models.
+An AI-powered tool that generates complete, importable Elementor Pro site kits (websites) and landing pages from a text prompt. Built with Next.js, the Vercel AI SDK, and support for both Claude and Gemini latest models.
 
 Describe what you want — the app creates a blueprint, lets you review it, then generates production-ready Elementor JSON you can import directly into WordPress.
 
